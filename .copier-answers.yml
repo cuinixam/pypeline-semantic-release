@@ -1,0 +1,14 @@
+# Changes here will be overwritten by Copier
+_commit: 4eb2e49
+_src_path: .
+copyright_year: '2025'
+documentation: true
+email: me@cuinixam.com
+full_name: cuinixam
+github_username: cuinixam
+open_source_license: MIT
+package_name: pypeline_semantic_release
+project_name: Pypeline step for semantic release
+project_short_description: Pypeline step for semantic release.
+project_slug: pypeline-semantic-release
+
