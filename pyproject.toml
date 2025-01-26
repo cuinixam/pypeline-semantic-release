@@ -51,7 +51,7 @@ version_variables = [
     "src/pypeline_semantic_release/__init__.py:__version__",
     "docs/conf.py:release",
 ]
-build_command = "poetry build"
+build_command = "pip install poetry && poetry build"
 
 [tool.semantic_release.changelog]
 exclude_commit_patterns = [
@@ -70,7 +70,7 @@ match = "(?!main$)"
 prerelease = true
 
 [tool.pytest.ini_options]
-addopts = "-v -Wdefault --cov=pypeline_semantic_release --cov-report=term-missing:skip-covered"
+addopts = "-v -Wdefault --cov=pypeline_semantic_release --cov-report=term-missing:skip-covered -s"
 pythonpath = ["src"]
 
 [tool.coverage.run]
