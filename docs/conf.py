@@ -83,8 +83,8 @@ html_theme = "sphinx_book_theme"
 html_logo = "_static/python-logo-only.svg"
 html_theme_options = {
     "home_page_in_toc": True,
-    "github_url": "https://github.com/cuinixam/hello-python",
-    "repository_url": "https://github.com/cuinixam/hello-python",
+    "github_url": "https://github.com/cuinixam/pypeline-semantic-release",
+    "repository_url": "https://github.com/cuinixam/pypeline-semantic-release",
     "repository_branch": "master",
     "path_to_docs": "docs",
     "use_repository_button": True,

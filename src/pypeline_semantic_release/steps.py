@@ -15,7 +15,7 @@ from pypeline.domain.execution_context import ExecutionContext
 from pypeline.domain.pipeline import PipelineStep
 from semantic_release.cli.cli_context import CliContextObj
 from semantic_release.cli.commands.version import last_released
-from semantic_release.cli.config import GlobalCommandLineOptions, RuntimeContext
+from semantic_release.cli.config import GlobalCommandLineOptions, HvcsClient, RemoteConfig, RuntimeContext
 from semantic_release.errors import NotAReleaseBranch
 from semantic_release.version.algorithm import next_version
 from semantic_release.version.version import Version
@@ -134,7 +134,7 @@ class CreateReleaseCommitConfig(DataClassDictMixin):
     """Configuration for the CreateReleaseCommit step."""
 
     #: Whether or not to push the new commit and tag to the remote
-    push: bool = False
+    push: bool = True
 
 
 class CreateReleaseCommit(BaseStep):
@@ -164,8 +164,6 @@ class CreateReleaseCommit(BaseStep):
         # (!) Using mocks for the ctx and logger objects is working as long as the semantic-release options are provided in the pyproject.toml file.
         context = CliContextObj(Mock(), Mock(), GlobalCommandLineOptions())
         config = context.raw_config
-        # TODO: Do not print the raw config in production code.
-        self.logger.debug(f"Semantic release raw config: {config}")
         last_release = self.last_released_version(config.repo_dir, tag_format=config.tag_format)
         self.logger.debug(f"Last released version: {last_release}")
         next_version = self.next_version(context)
@@ -175,7 +173,7 @@ class CreateReleaseCommit(BaseStep):
             if ci_context.is_ci and not ci_context.is_pull_request:
                 if not last_release or next_version > last_release:
                     self.logger.info("Running semantic release.")
-                    self.do_release()
+                    self.do_release(config.remote)
                     # Store the release commit to be updated in the data registry
                     self.release_commit = ReleaseCommit(version=next_version, previous_version=last_release)
                 else:
@@ -215,23 +213,31 @@ class CreateReleaseCommit(BaseStep):
             )
         return new_version
 
-    def do_release(self) -> None:
+    def do_release(self, remote_config: RemoteConfig) -> None:
         config = CreateReleaseCommitConfig.from_dict(self.config) if self.config else CreateReleaseCommitConfig()
-        # We have to update the BITBUCKET_TOKEN environment variable because it will be used in the push URL and requires all special characters to be URL encoded.
-        os.environ["BITBUCKET_TOKEN"] = quote_plus(os.getenv("BITBUCKET_TOKEN", ""))
+        self.quote_token_for_url(remote_config)
         semantic_release_args = ["--skip-build", "--no-vcs-release"]
         semantic_release_args.append("--push" if config.push else "--no-push")
         # For Windows call the semantic-release executable
-        semantic_release_cmd = ["semantic-release"] if os.name == "nt" else ["python", "-m", "semantic_release"]
         self.execute_process(
             [
-                *semantic_release_cmd,
+                *self.get_semantic_release_command(),
                 "version",
                 *semantic_release_args,
             ],
             "Failed to create release commit.",
         )
         self.logger.info("[OK] New release commit created and pushed to remote.")
+
+    @staticmethod
+    def get_semantic_release_command() -> List[str]:
+        return ["semantic-release.exe"] if os.name == "nt" else ["python", "-m", "semantic_release"]
+
+    @staticmethod
+    def quote_token_for_url(remote_config: RemoteConfig) -> None:
+        """Update the remote TOKEN environment variable because it will be used in the push URL and requires all special characters to be URL encoded."""
+        if remote_config.type == HvcsClient.BITBUCKET:
+            os.environ["BITBUCKET_TOKEN"] = quote_plus(os.getenv("BITBUCKET_TOKEN", ""))
 
 
 @dataclass
@@ -282,9 +288,7 @@ class PublishPackage(BaseStep):
                 )
                 return
             publish_auth_args = ["--username", pypi_user, "--password", pypi_password, "--repository", config.pypi_repository_name]
-        # For Windows call the poetry executable
-        poetry_cmd = ["poetry"] if os.name == "nt" else ["python", "-m", "poetry"]
-        self.execute_process([*poetry_cmd, "publish", "--build", *publish_auth_args], "Failed to publish package to PyPI.")
+        self.execute_process([*self.get_poetry_command(), "publish", "--build", *publish_auth_args], "Failed to publish package to PyPI.")
         self.logger.info("[OK] Package published to PyPI.")
 
     def find_data(self, data_type: Type[T]) -> Optional[T]:
@@ -293,3 +297,7 @@ class PublishPackage(BaseStep):
             return tmp_data[0]
         else:
             return None
+
+    @staticmethod
+    def get_poetry_command() -> List[str]:
+        return ["poetry"] if os.name == "nt" else ["python", "-m", "poetry"]

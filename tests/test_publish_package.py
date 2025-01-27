@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -7,8 +6,6 @@ from pypeline.domain.execution_context import ExecutionContext
 from semantic_release.version.version import Version
 
 from pypeline_semantic_release.steps import CIContext, CISystem, PublishPackage, PublishPackageConfig, ReleaseCommit
-
-poetry_cmd = ["poetry"] if os.name == "nt" else ["python", "-m", "poetry"]
 
 
 @pytest.fixture
@@ -36,7 +33,7 @@ def test_publish_package_success(mock_execution_context: Mock) -> None:
 
     # Expect that publish command is called
     mock_executor.execute.assert_called_once()
-    mock_execution_context.create_process_executor.assert_called_once_with([*poetry_cmd, "publish", "--build"])
+    mock_execution_context.create_process_executor.assert_called_once_with([*PublishPackage.get_poetry_command(), "publish", "--build"])
 
 
 def test_publish_package_with_credentials(mock_execution_context: Mock) -> None:
@@ -54,7 +51,7 @@ def test_publish_package_with_credentials(mock_execution_context: Mock) -> None:
     # Expect that publish command is called with credentials
     mock_executor.execute.assert_called_once()
     mock_execution_context.create_process_executor.assert_called_once_with(
-        [*poetry_cmd, "publish", "--build", "--username", "user", "--password", "password", "--repository", "test-repo"]
+        [*PublishPackage.get_poetry_command(), "publish", "--build", "--username", "user", "--password", "password", "--repository", "test-repo"]
     )
 
 
