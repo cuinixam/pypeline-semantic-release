@@ -60,7 +60,8 @@ class BaseStep(PipelineStep[ExecutionContext]):
 
     def execute_process(self, command: List[str | Path], error_msg: str) -> None:
         proc_executor = self.execution_context.create_process_executor(command)
-        proc_executor.shell = False
+        # When started from a shell (e.g. cmd on Jenkins) the shell parameter must be set to True
+        proc_executor.shell = True if os.name == "nt" else False
         process = proc_executor.execute(handle_errors=False)
         if process and process.returncode != 0:
             raise UserNotificationException(f"{error_msg} Return code: {process.returncode}")
@@ -165,7 +166,7 @@ class CreateReleaseCommit(BaseStep):
         context = CliContextObj(Mock(), Mock(), GlobalCommandLineOptions())
         config = context.raw_config
         last_release = self.last_released_version(config.repo_dir, tag_format=config.tag_format)
-        self.logger.debug(f"Last released version: {last_release}")
+        self.logger.info(f"Last released version: {last_release}")
         next_version = self.next_version(context)
         if next_version:
             self.logger.info(f"Next version: {next_version}")
@@ -201,7 +202,6 @@ class CreateReleaseCommit(BaseStep):
         except Exception as exc:
             raise UserNotificationException(f"Failed to determine next version. Exception: {exc}") from exc
 
-        self.logger.debug(f"Semantic release runtime context: {runtime}")
         with Repo(str(runtime.repo_dir)) as git_repo:
             new_version = next_version(
                 repo=git_repo,
@@ -231,7 +231,7 @@ class CreateReleaseCommit(BaseStep):
 
     @staticmethod
     def get_semantic_release_command() -> List[str]:
-        return ["semantic-release.exe"] if os.name == "nt" else ["python", "-m", "semantic_release"]
+        return ["python", "-m", "semantic_release"]
 
     @staticmethod
     def quote_token_for_url(remote_config: RemoteConfig) -> None:
@@ -300,4 +300,4 @@ class PublishPackage(BaseStep):
 
     @staticmethod
     def get_poetry_command() -> List[str]:
-        return ["poetry"] if os.name == "nt" else ["python", "-m", "poetry"]
+        return ["python", "-m", "poetry"]
