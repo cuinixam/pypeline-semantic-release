@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.1.1 (2025-01-28)
+
+### Bug Fixes
+
+- Semantic-release step fails when executed from a Jenkins bat
+  ([`0d4680d`](https://github.com/cuinixam/pypeline-semantic-release/commit/0d4680de37c6d47ce57d274deae38ac32f3c2308))
+
+
 ## v0.1.0 (2025-01-27)
 
 ### Features
