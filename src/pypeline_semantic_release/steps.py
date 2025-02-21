@@ -1,4 +1,5 @@
 import os
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -67,16 +68,10 @@ class BaseStep(PipelineStep[ExecutionContext]):
             raise UserNotificationException(f"{error_msg} Return code: {process.returncode}")
 
 
-# Create ENUM for the CI system
-class CISystem(Enum):
-    UNKNOWN = auto()
-    JENKINS = auto()
-
-
 @dataclass
 class CIContext:
     #: CI system where the build is running
-    ci_system: CISystem
+    ci_system: "CISystem"
     #: Whether the build is for a pull request
     is_pull_request: bool
     #: The branch being build or the branch from the PR to merge into (e.g. main)
@@ -90,38 +85,105 @@ class CIContext:
         return self.ci_system != CISystem.UNKNOWN
 
 
-class CheckCIContext(BaseStep):
-    """Provide the CI context for the current build."""
+class CIDetector(ABC):
+    """Abstract base class for CI system detectors."""
 
-    def get_env_variable(self, var_name: str, default: Optional[str] = None) -> Optional[str]:
-        """Fetch environment variables to make testing easier."""
+    @abstractmethod
+    def detect(self) -> Optional[CIContext]:
+        """Detects the CI system and returns a CIContext, or None if not detected."""
+        pass
+
+    @staticmethod
+    def get_env_variable(var_name: str, default: Optional[str] = None) -> Optional[str]:
+        """Helper function to get environment variables."""
         return os.getenv(var_name, default)
 
-    def update_execution_context(self) -> None:
-        """Check if the current build runs on Jenkins and then determine the CI context."""
-        ci_system = CISystem.JENKINS if self.get_env_variable("JENKINS_HOME") is not None else CISystem.UNKNOWN
-        is_pull_request = self.get_env_variable("CHANGE_ID") is not None
 
-        if is_pull_request:
-            target_branch = self.get_env_variable("CHANGE_TARGET")
-            current_branch = self.get_env_variable("CHANGE_BRANCH")
-        else:
-            target_branch = self.get_env_variable("BRANCH_NAME")
-            current_branch = target_branch
+class JenkinsDetector(CIDetector):
+    """Detects Jenkins CI."""
 
-        if not target_branch or not current_branch:
-            if ci_system != CISystem.UNKNOWN:
-                self.logger.warning("Detected CI Build but branch names not found.")
+    def detect(self) -> Optional[CIContext]:
+        if self.get_env_variable("JENKINS_HOME") is not None:
+            is_pull_request = self.get_env_variable("CHANGE_ID") is not None
+            if is_pull_request:
+                target_branch = self.get_env_variable("CHANGE_TARGET")
+                current_branch = self.get_env_variable("CHANGE_BRANCH")
+            else:
+                target_branch = self.get_env_variable("BRANCH_NAME")
+                current_branch = target_branch
 
-        self.execution_context.data_registry.insert(
-            CIContext(
-                ci_system=ci_system,
+            return CIContext(
+                ci_system=CISystem.JENKINS,
                 is_pull_request=is_pull_request,
                 target_branch=target_branch,
                 current_branch=current_branch,
-            ),
-            self.get_name(),
-        )
+            )
+        return None
+
+
+class GitHubActionsDetector(CIDetector):
+    """Detects GitHub Actions CI."""
+
+    def detect(self) -> Optional[CIContext]:
+        if self.get_env_variable("GITHUB_ACTIONS") == "true":
+            is_pull_request = self.get_env_variable("GITHUB_EVENT_NAME") == "pull_request"
+            if is_pull_request:
+                target_branch = self.get_env_variable("GITHUB_BASE_REF")
+                current_branch = self.get_env_variable("GITHUB_HEAD_REF")
+            else:
+                target_branch = self.get_env_variable("GITHUB_REF_NAME")
+                current_branch = target_branch
+
+            return CIContext(
+                ci_system=CISystem.GITHUB_ACTIONS,
+                is_pull_request=is_pull_request,
+                target_branch=target_branch,
+                current_branch=current_branch,
+            )
+        return None
+
+
+class CISystem(Enum):
+    UNKNOWN = (auto(), None)  # Special case for unknown
+    JENKINS = (auto(), JenkinsDetector)
+    GITHUB_ACTIONS = (auto(), GitHubActionsDetector)
+    # Add new CI systems here:  MY_CI = (auto(), MyCIDetector)
+
+    def __init__(self, _: Any, detector_class: Optional[Type[CIDetector]]):
+        self._value_ = _  # Use auto() value, but ignore it in __init__
+        self.detector_class = detector_class
+
+    def get_detector(self) -> Optional[CIDetector]:
+        return self.detector_class() if self.detector_class else None
+
+
+class CheckCIContext(BaseStep):
+    """Provide the CI context for the current build."""
+
+    def update_execution_context(self) -> None:
+        ci_context: Optional[CIContext] = None
+
+        # Iterate through the CISystem enum and use the first detected CI system
+        for ci_system in CISystem:
+            detector = ci_system.get_detector()
+            if detector:
+                ci_context = detector.detect()
+                if ci_context:
+                    break  # Stop at the first detected CI
+
+        if ci_context is None:
+            ci_context = CIContext(
+                ci_system=CISystem.UNKNOWN,
+                is_pull_request=False,
+                target_branch=None,
+                current_branch=None,
+            )
+
+        if not ci_context.target_branch or not ci_context.current_branch:
+            if ci_context.ci_system != CISystem.UNKNOWN:
+                self.logger.warning("Detected CI Build but branch names not found.")
+
+        self.execution_context.data_registry.insert(ci_context, self.get_name())
 
 
 @dataclass
