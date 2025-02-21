@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.0 (2025-02-21)
+
+### Features
+
+- Add support for github actions ci context
+  ([`52349e0`](https://github.com/cuinixam/pypeline-semantic-release/commit/52349e0cd75895151ccdb84a4bb141dfc79237c0))
+
+
 ## v0.1.1 (2025-01-28)
 
 ### Bug Fixes
