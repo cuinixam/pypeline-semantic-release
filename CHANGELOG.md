@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.3.0 (2025-04-15)
+
+### Bug Fixes
+
+- Stable versions are not released because of existing release candidates
+  ([`3e00c6c`](https://github.com/cuinixam/pypeline-semantic-release/commit/3e00c6c072b6802b78ec2b041cee5e1f3054a55a))
+
+### Features
+
+- Add support for prerelease token input
+  ([`eeeab29`](https://github.com/cuinixam/pypeline-semantic-release/commit/eeeab29ddf93a2adf6ac19462c3695746307dc83))
+
+
 ## v0.2.0 (2025-02-21)
 
 ### Features
