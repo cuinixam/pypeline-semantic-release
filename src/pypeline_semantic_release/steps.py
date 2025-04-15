@@ -17,7 +17,7 @@ from pypeline.domain.pipeline import PipelineStep
 from semantic_release import VersionTranslator, tags_and_versions
 from semantic_release.cli.cli_context import CliContextObj
 from semantic_release.cli.commands.version import last_released
-from semantic_release.cli.config import GlobalCommandLineOptions, HvcsClient, RemoteConfig, RuntimeContext
+from semantic_release.cli.config import BranchConfig, GlobalCommandLineOptions, HvcsClient, RemoteConfig, RuntimeContext
 from semantic_release.errors import NotAReleaseBranch
 from semantic_release.version.algorithm import next_version
 from semantic_release.version.version import Version
@@ -228,6 +228,7 @@ class CreateReleaseCommit(BaseStep):
         # (!) Using mocks for the ctx and logger objects is working as long as the semantic-release options are provided in the pyproject.toml file.
         context = CliContextObj(Mock(), Mock(), GlobalCommandLineOptions())
         config = context.raw_config
+        self.update_prerelease_token(config.branches)
         last_release = self.last_released_version(config.repo_dir, tag_format=config.tag_format)
         self.logger.info(f"Last released version: {last_release}")
         next_version = self.next_version(context)
@@ -250,6 +251,15 @@ class CreateReleaseCommit(BaseStep):
                 self.logger.warning(f"Current branch {ci_context.current_branch} is not configured to be released.")
             else:
                 self.logger.warning("No CI context, assuming local run. Skip releasing the package.")
+
+    def update_prerelease_token(self, branches: Dict[str, BranchConfig]) -> None:
+        """Iterate over all branches and update the prerelease token."""
+        prerelease_token = self.execution_context.get_input("prerelease_token")
+        if prerelease_token:
+            for branch in branches.values():
+                if branch.prerelease_token or branch.prerelease:
+                    branch.prerelease_token = prerelease_token
+                    self.logger.info(f"Updated prerelease token for branches matching {branch.match} to {prerelease_token}")
 
     def last_released_version(self, repo_dir: Path, tag_format: str) -> Optional[Version]:
         last_release_str = last_released(repo_dir, tag_format)
@@ -294,6 +304,9 @@ class CreateReleaseCommit(BaseStep):
         self.quote_token_for_url(remote_config)
         semantic_release_args = ["--skip-build", "--no-vcs-release"]
         semantic_release_args.append("--push" if config.push else "--no-push")
+        prerelease_token = self.execution_context.get_input("prerelease_token")
+        if prerelease_token:
+            semantic_release_args.extend(["--prerelease-token", prerelease_token])
         # For Windows call the semantic-release executable
         self.execute_process(
             [

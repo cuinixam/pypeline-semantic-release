@@ -33,6 +33,10 @@ class PyPackageRepo:
     def create_local_execution_context(self) -> ExecutionContext:
         return ExecutionContext(Path(self.repo.working_dir))
 
+    def checkout_branch(self, branch: str) -> None:
+        """Create and checkout a new branch."""
+        self.repo.git.checkout("-b", branch)
+
 
 @pytest.fixture
 def py_package_tmp(tmp_path: Path) -> PyPackageRepo:
