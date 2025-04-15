@@ -14,6 +14,7 @@ from py_app_dev.core.exceptions import UserNotificationException
 from py_app_dev.core.logging import logger
 from pypeline.domain.execution_context import ExecutionContext
 from pypeline.domain.pipeline import PipelineStep
+from semantic_release import VersionTranslator, tags_and_versions
 from semantic_release.cli.cli_context import CliContextObj
 from semantic_release.cli.commands.version import last_released
 from semantic_release.cli.config import GlobalCommandLineOptions, HvcsClient, RemoteConfig, RuntimeContext
@@ -233,14 +234,17 @@ class CreateReleaseCommit(BaseStep):
         if next_version:
             self.logger.info(f"Next version: {next_version}")
             self.logger.info(f"Next version tag: {next_version.as_tag()}")
+
             if ci_context.is_ci and not ci_context.is_pull_request:
-                if not last_release or next_version > last_release:
-                    self.logger.info("Running semantic release.")
+                # Collect all tags and versions to check if the next version already exists
+                all_versions = self.collect_all_tags_and_versions(config.repo_dir, config.tag_format)
+                if not self.does_version_exist(next_version, all_versions):
+                    self.logger.info("Version doesn't exist yet. Running semantic release.")
                     self.do_release(config.remote)
                     # Store the release commit to be updated in the data registry
                     self.release_commit = ReleaseCommit(version=next_version, previous_version=last_release)
                 else:
-                    self.logger.info("No release needed.")
+                    self.logger.info(f"Version {next_version} already exists. No release needed.")
         else:
             if ci_context:
                 self.logger.warning(f"Current branch {ci_context.current_branch} is not configured to be released.")
@@ -250,6 +254,16 @@ class CreateReleaseCommit(BaseStep):
     def last_released_version(self, repo_dir: Path, tag_format: str) -> Optional[Version]:
         last_release_str = last_released(repo_dir, tag_format)
         return last_release_str[1] if last_release_str else None
+
+    def collect_all_tags_and_versions(self, repo_dir: Path, tag_format: str) -> List[Version]:
+        with Repo(str(repo_dir)) as git_repo:
+            ts_and_vs = tags_and_versions(git_repo.tags, VersionTranslator(tag_format=tag_format))
+        return [item[1] for item in ts_and_vs] if ts_and_vs else []
+
+    @staticmethod
+    def does_version_exist(version: Version, versions: List[Version]) -> bool:
+        """Check if a version exists in the list of versions."""
+        return any(version == v for v in versions)
 
     def next_version(self, context: CliContextObj) -> Optional[Version]:
         try:

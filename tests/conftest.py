@@ -20,6 +20,11 @@ class PyPackageRepo:
         self.repo.index.commit("feat: some new feature")
         return self
 
+    def new_tag(self, tag: str) -> "PyPackageRepo":
+        """Create a new tag."""
+        self.repo.create_tag(tag)
+        return self
+
     def create_ci_execution_context(self) -> ExecutionContext:
         execution_context = ExecutionContext(Path(self.repo.working_dir))
         execution_context.data_registry.insert(CIContext(is_pull_request=False, ci_system=CISystem.JENKINS, target_branch="develop", current_branch="develop"), "ci_context")
