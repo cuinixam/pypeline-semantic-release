@@ -6,7 +6,6 @@ authors = ["cuinixam <me@cuinixam.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/cuinixam/pypeline-semantic-release"
-documentation = "https://pypeline-semantic-release.readthedocs.io"
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -35,21 +34,10 @@ pytest-cov = "^6.0"
 pre-commit = "^4.1"
 ruff = "^0.9"
 
-[tool.poetry.group.docs.dependencies]
-myst-parser = ">=0.16"
-sphinx = ">=4.0"
-sphinxcontrib-mermaid = "^0.8"
-mlx-traceability = "^10.0"
-sphinx-copybutton = "^0.5"
-sphinx-new-tab-link = "^0.2"
-sphinx-book-theme = "^1.1"
-sphinx-design = "^0.5"
-
 [tool.semantic_release]
 version_toml = ["pyproject.toml:tool.poetry.version"]
 version_variables = [
-    "src/pypeline_semantic_release/__init__.py:__version__",
-    "docs/conf.py:release",
+    "src/pypeline_semantic_release/__init__.py:__version__"
 ]
 build_command = "pip install poetry && poetry build"
 
@@ -127,7 +115,6 @@ exclude = [
 ]
 "setup.py" = ["D100"]
 "conftest.py" = ["D100"]
-"docs/conf.py" = ["D100"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["pypeline_semantic_release", "tests"]
@@ -143,17 +130,12 @@ show_error_codes = true
 warn_unreachable = true
 warn_unused_ignores = true
 exclude = [
-    'docs/.*',
     'setup.py',
 ]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
 allow_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = "docs.*"
-ignore_errors = true
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -232,25 +232,42 @@ class CreateReleaseCommit(BaseStep):
         last_release = self.last_released_version(config.repo_dir, tag_format=config.tag_format)
         self.logger.info(f"Last released version: {last_release}")
         next_version = self.next_version(context)
-        if next_version:
-            self.logger.info(f"Next version: {next_version}")
-            self.logger.info(f"Next version tag: {next_version.as_tag()}")
 
-            if ci_context.is_ci and not ci_context.is_pull_request:
-                # Collect all tags and versions to check if the next version already exists
-                all_versions = self.collect_all_tags_and_versions(config.repo_dir, config.tag_format)
-                if not self.does_version_exist(next_version, all_versions):
-                    self.logger.info("Version doesn't exist yet. Running semantic release.")
-                    self.do_release(config.remote)
-                    # Store the release commit to be updated in the data registry
-                    self.release_commit = ReleaseCommit(version=next_version, previous_version=last_release)
-                else:
-                    self.logger.info(f"Version {next_version} already exists. No release needed.")
-        else:
+        if not next_version:
             if ci_context:
-                self.logger.warning(f"Current branch {ci_context.current_branch} is not configured to be released.")
+                self.logger.info(f"Current branch {ci_context.current_branch} is not configured to be released.")
             else:
-                self.logger.warning("No CI context, assuming local run. Skip releasing the package.")
+                self.logger.info("No CI context, assuming local run. Skip releasing the package.")
+            return
+
+        self.logger.info(f"Next version: {next_version}")
+        self.logger.info(f"Next version tag: {next_version.as_tag()}")
+
+        if not ci_context.is_ci:
+            self.logger.info("No CI context, assuming local run. Skip releasing the package.")
+            return
+
+        if ci_context.is_pull_request:
+            self.logger.info("Pull request detected. Skip releasing the package.")
+            return
+
+        # Collect all tags and versions to check if the next version already exists
+        all_versions = self.collect_all_tags_and_versions(config.repo_dir, config.tag_format)
+        if self.does_version_exist(next_version, all_versions):
+            self.logger.info(f"Version {next_version} already exists. No release needed.")
+            return
+
+        if next_version.is_prerelease:
+            self.logger.info(f"Detected pre-release version: {next_version}.")
+            do_prerelease = self.execution_context.get_input("do_prerelease")
+            if not do_prerelease:
+                self.logger.info("Pre-release version detected but 'do_prerelease' is not set. Skip releasing the package.")
+                return
+
+        self.logger.info("Version doesn't exist yet. Running semantic release.")
+        self.do_release(config.remote)
+        # Store the release commit to be updated in the data registry
+        self.release_commit = ReleaseCommit(version=next_version, previous_version=last_release)
 
     def update_prerelease_token(self, branches: Dict[str, BranchConfig]) -> None:
         """Iterate over all branches and update the prerelease token."""
