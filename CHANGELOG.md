@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.4.0 (2025-04-16)
+
+### Features
+
+- Prereleases are not done automatically
+  ([`cc22ede`](https://github.com/cuinixam/pypeline-semantic-release/commit/cc22edecdf8d0d148e78f79018430a8fe613d5de))
+
+
 ## v0.3.0 (2025-04-15)
 
 ### Bug Fixes
