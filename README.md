@@ -148,7 +148,7 @@ For Jenkins, one can define the inputs in the pipeline script:
 properties([
     parameters ([
     booleanParam(
-            name: 'do_prerelease'
+            name: 'do_prerelease',
             defaultValue: false,
             description: '''If set to true, will create a prerelease.
                 This is required to avoid creating prereleases automatically when pushing a branch.''',
