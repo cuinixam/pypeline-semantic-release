@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.4.1 (2025-07-10)
+
+### Bug Fixes
+
+- Obsolete typer dependency
+  ([`155c813`](https://github.com/cuinixam/pypeline-semantic-release/commit/155c813c140e858133a68e494b325bcbe548dc83))
+
+
 ## v0.4.0 (2025-04-16)
 
 ### Features
