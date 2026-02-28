@@ -1,10 +1,11 @@
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Type, TypeVar
+from typing import Any, TypeVar
 from unittest.mock import Mock
 from urllib.parse import quote_plus
 
@@ -37,17 +38,17 @@ def change_directory(path: Path) -> Iterator[None]:
 class BaseStep(PipelineStep[ExecutionContext]):
     """Base step defining all required methods."""
 
-    def __init__(self, execution_context: ExecutionContext, group_name: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, execution_context: ExecutionContext, group_name: str | None = None, config: dict[str, Any] | None = None) -> None:
         super().__init__(execution_context, group_name, config)
         self.logger = logger.bind()
 
     def run(self) -> None:
         pass
 
-    def get_inputs(self) -> List[Path]:
+    def get_inputs(self) -> list[Path]:
         return []
 
-    def get_outputs(self) -> List[Path]:
+    def get_outputs(self) -> list[Path]:
         return []
 
     def get_name(self) -> str:
@@ -60,7 +61,7 @@ class BaseStep(PipelineStep[ExecutionContext]):
         """It shall always run, independent off any dependencies."""
         return False
 
-    def execute_process(self, command: List[str | Path], error_msg: str) -> None:
+    def execute_process(self, command: list[str | Path], error_msg: str) -> None:
         proc_executor = self.execution_context.create_process_executor(command)
         # When started from a shell (e.g. cmd on Jenkins) the shell parameter must be set to True
         proc_executor.shell = True if os.name == "nt" else False
@@ -76,9 +77,9 @@ class CIContext:
     #: Whether the build is for a pull request
     is_pull_request: bool
     #: The branch being build or the branch from the PR to merge into (e.g. main)
-    target_branch: Optional[str]
+    target_branch: str | None
     #: Branch being built or the branch from the PR that needs to be merged (e.g. feature/branch)
-    current_branch: Optional[str]
+    current_branch: str | None
 
     @property
     def is_ci(self) -> bool:
@@ -90,12 +91,12 @@ class CIDetector(ABC):
     """Abstract base class for CI system detectors."""
 
     @abstractmethod
-    def detect(self) -> Optional[CIContext]:
+    def detect(self) -> CIContext | None:
         """Detects the CI system and returns a CIContext, or None if not detected."""
         pass
 
     @staticmethod
-    def get_env_variable(var_name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_env_variable(var_name: str, default: str | None = None) -> str | None:
         """Helper function to get environment variables."""
         return os.getenv(var_name, default)
 
@@ -103,7 +104,7 @@ class CIDetector(ABC):
 class JenkinsDetector(CIDetector):
     """Detects Jenkins CI."""
 
-    def detect(self) -> Optional[CIContext]:
+    def detect(self) -> CIContext | None:
         if self.get_env_variable("JENKINS_HOME") is not None:
             is_pull_request = self.get_env_variable("CHANGE_ID") is not None
             if is_pull_request:
@@ -125,7 +126,7 @@ class JenkinsDetector(CIDetector):
 class GitHubActionsDetector(CIDetector):
     """Detects GitHub Actions CI."""
 
-    def detect(self) -> Optional[CIContext]:
+    def detect(self) -> CIContext | None:
         if self.get_env_variable("GITHUB_ACTIONS") == "true":
             is_pull_request = self.get_env_variable("GITHUB_EVENT_NAME") == "pull_request"
             if is_pull_request:
@@ -150,11 +151,11 @@ class CISystem(Enum):
     GITHUB_ACTIONS = (auto(), GitHubActionsDetector)
     # Add new CI systems here:  MY_CI = (auto(), MyCIDetector)
 
-    def __init__(self, _: Any, detector_class: Optional[Type[CIDetector]]):
+    def __init__(self, _: Any, detector_class: type[CIDetector] | None):
         self._value_ = _  # Use auto() value, but ignore it in __init__
         self.detector_class = detector_class
 
-    def get_detector(self) -> Optional[CIDetector]:
+    def get_detector(self) -> CIDetector | None:
         return self.detector_class() if self.detector_class else None
 
 
@@ -162,7 +163,7 @@ class CheckCIContext(BaseStep):
     """Provide the CI context for the current build."""
 
     def update_execution_context(self) -> None:
-        ci_context: Optional[CIContext] = None
+        ci_context: CIContext | None = None
 
         # Iterate through the CISystem enum and use the first detected CI system
         for ci_system in CISystem:
@@ -190,7 +191,7 @@ class CheckCIContext(BaseStep):
 @dataclass
 class ReleaseCommit:
     version: Version
-    previous_version: Optional[Version] = None
+    previous_version: Version | None = None
 
 
 @dataclass
@@ -204,9 +205,9 @@ class CreateReleaseCommitConfig(DataClassDictMixin):
 class CreateReleaseCommit(BaseStep):
     """Create new commit using semantic release."""
 
-    def __init__(self, execution_context: ExecutionContext, group_name: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, execution_context: ExecutionContext, group_name: str | None = None, config: dict[str, Any] | None = None) -> None:
         super().__init__(execution_context, group_name, config)
-        self.release_commit: Optional[ReleaseCommit] = None
+        self.release_commit: ReleaseCommit | None = None
 
     def run(self) -> None:
         with change_directory(self.execution_context.project_root_dir):
@@ -269,7 +270,7 @@ class CreateReleaseCommit(BaseStep):
         # Store the release commit to be updated in the data registry
         self.release_commit = ReleaseCommit(version=next_version, previous_version=last_release)
 
-    def update_prerelease_token(self, branches: Dict[str, BranchConfig]) -> None:
+    def update_prerelease_token(self, branches: dict[str, BranchConfig]) -> None:
         """Iterate over all branches and update the prerelease token."""
         prerelease_token = self.execution_context.get_input("prerelease_token")
         if prerelease_token:
@@ -278,21 +279,21 @@ class CreateReleaseCommit(BaseStep):
                     branch.prerelease_token = prerelease_token
                     self.logger.info(f"Updated prerelease token for branches matching {branch.match} to {prerelease_token}")
 
-    def last_released_version(self, repo_dir: Path, tag_format: str) -> Optional[Version]:
+    def last_released_version(self, repo_dir: Path, tag_format: str) -> Version | None:
         last_release_str = last_released(repo_dir, tag_format)
         return last_release_str[1] if last_release_str else None
 
-    def collect_all_tags_and_versions(self, repo_dir: Path, tag_format: str) -> List[Version]:
+    def collect_all_tags_and_versions(self, repo_dir: Path, tag_format: str) -> list[Version]:
         with Repo(str(repo_dir)) as git_repo:
             ts_and_vs = tags_and_versions(git_repo.tags, VersionTranslator(tag_format=tag_format))
         return [item[1] for item in ts_and_vs] if ts_and_vs else []
 
     @staticmethod
-    def does_version_exist(version: Version, versions: List[Version]) -> bool:
+    def does_version_exist(version: Version, versions: list[Version]) -> bool:
         """Check if a version exists in the list of versions."""
         return any(version == v for v in versions)
 
-    def next_version(self, context: CliContextObj) -> Optional[Version]:
+    def next_version(self, context: CliContextObj) -> Version | None:
         try:
             runtime = RuntimeContext.from_raw_config(
                 context.raw_config,
@@ -336,7 +337,7 @@ class CreateReleaseCommit(BaseStep):
         self.logger.info("[OK] New release commit created and pushed to remote.")
 
     @staticmethod
-    def get_semantic_release_command() -> List[str]:
+    def get_semantic_release_command() -> list[str]:
         return ["python", "-m", "semantic_release"]
 
     @staticmethod
@@ -351,7 +352,7 @@ class PublishPackageConfig(DataClassDictMixin):
     """Configuration for the PublishPackage step."""
 
     #: PyPi repository name for releasing the package. If not set, the package will be released to the python-semantic-release default PyPi repository.
-    pypi_repository_name: Optional[str] = None
+    pypi_repository_name: str | None = None
     #: Environment variable name for the pypi repository user
     pypi_user_env: str = "PYPI_USER"
     #: Environment variable name for the pypi repository password
@@ -397,7 +398,7 @@ class PublishPackage(BaseStep):
         self.execute_process([*self.get_poetry_command(), "publish", "--build", *publish_auth_args], "Failed to publish package to PyPI.")
         self.logger.info("[OK] Package published to PyPI.")
 
-    def find_data(self, data_type: Type[T]) -> Optional[T]:
+    def find_data(self, data_type: type[T]) -> T | None:
         tmp_data = self.execution_context.data_registry.find_data(data_type)
         if len(tmp_data) > 0:
             return tmp_data[0]
@@ -405,5 +406,5 @@ class PublishPackage(BaseStep):
             return None
 
     @staticmethod
-    def get_poetry_command() -> List[str]:
+    def get_poetry_command() -> list[str]:
         return ["python", "-m", "poetry"]

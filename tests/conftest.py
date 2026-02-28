@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 from git import Repo
@@ -26,7 +26,7 @@ class PyPackageRepo:
         self.repo.create_tag(tag)
         return self
 
-    def create_ci_execution_context(self, inputs: Optional[dict[str, Any]] = None) -> ExecutionContext:
+    def create_ci_execution_context(self, inputs: dict[str, Any] | None = None) -> ExecutionContext:
         execution_context = ExecutionContext(project_root_dir=Path(self.repo.working_dir), inputs=inputs or {})
         execution_context.data_registry.insert(CIContext(is_pull_request=False, ci_system=CISystem.JENKINS, target_branch="develop", current_branch="develop"), "ci_context")
         return execution_context
