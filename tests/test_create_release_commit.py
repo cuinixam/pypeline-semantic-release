@@ -1,5 +1,9 @@
+from pathlib import Path
+from unittest.mock import Mock
+
 import pytest
-from semantic_release.cli.config import BranchConfig
+from pypeline.domain.execution_context import ExecutionContext
+from semantic_release.cli.config import BranchConfig, RemoteConfig
 
 from pypeline_semantic_release.steps import CreateReleaseCommit, CreateReleaseCommitConfig, ReleaseCommit
 from tests.conftest import PyPackageRepo
@@ -157,3 +161,89 @@ def test_prerelease_not_created_automatically(repo_with_feature_branch: PyPackag
     iut_step.update_execution_context()
     # Expect no release commit
     assert iut_step.execution_context.data_registry.find_data(ReleaseCommit)
+
+
+# --- Unit tests for do_release() CLI flag generation ---
+
+
+@pytest.fixture
+def mock_execution_context() -> Mock:
+    execution_context = Mock(spec=ExecutionContext)
+    execution_context.project_root_dir = Path("/mock/project")
+    execution_context.get_input.return_value = None
+    process_executor = Mock()
+    process_executor.execute.return_value = None
+    execution_context.create_process_executor.return_value = process_executor
+    return execution_context
+
+
+def _get_semantic_release_args(mock_execution_context: Mock) -> list[str]:
+    """Extract the arguments passed to create_process_executor."""
+    return mock_execution_context.create_process_executor.call_args[0][0]
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_flags", "unexpected_flags"),
+    [
+        pytest.param(
+            CreateReleaseCommitConfig(push=False),
+            ["--skip-build", "--no-vcs-release", "--no-push"],
+            [],
+            id="defaults-skip-build-and-no-vcs-release",
+        ),
+        pytest.param(
+            CreateReleaseCommitConfig(push=False, build=True),
+            ["--no-vcs-release", "--no-push"],
+            ["--skip-build"],
+            id="build-enabled-removes-skip-build",
+        ),
+        pytest.param(
+            CreateReleaseCommitConfig(push=False, vcs_release=True),
+            ["--skip-build", "--no-push"],
+            ["--no-vcs-release"],
+            id="vcs-release-enabled-removes-no-vcs-release",
+        ),
+        pytest.param(
+            CreateReleaseCommitConfig(push=False, build=True, vcs_release=True),
+            ["--no-push"],
+            ["--skip-build", "--no-vcs-release"],
+            id="build-and-vcs-release-enabled",
+        ),
+        pytest.param(
+            CreateReleaseCommitConfig(push=True, build=True, vcs_release=True),
+            ["--push"],
+            ["--skip-build", "--no-vcs-release", "--no-push"],
+            id="all-enabled-with-push",
+        ),
+    ],
+)
+def test_do_release_cli_flags(
+    mock_execution_context: Mock,
+    config: CreateReleaseCommitConfig,
+    expected_flags: list[str],
+    unexpected_flags: list[str],
+) -> None:
+    step = CreateReleaseCommit(mock_execution_context, config=config.to_dict())
+    remote_config = Mock(spec=RemoteConfig)
+    remote_config.type = "github"
+
+    step.do_release(remote_config)
+
+    args = _get_semantic_release_args(mock_execution_context)
+    for flag in expected_flags:
+        assert flag in args, f"Expected {flag} in {args}"
+    for flag in unexpected_flags:
+        assert flag not in args, f"Did not expect {flag} in {args}"
+
+
+def test_do_release_includes_prerelease_token(mock_execution_context: Mock) -> None:
+    mock_execution_context.get_input.return_value = "beta"
+    step = CreateReleaseCommit(mock_execution_context, config=CreateReleaseCommitConfig(push=False).to_dict())
+    remote_config = Mock(spec=RemoteConfig)
+    remote_config.type = "github"
+
+    step.do_release(remote_config)
+
+    args = _get_semantic_release_args(mock_execution_context)
+    token_idx = args.index("--prerelease-token")
+    assert args[token_idx + 1] == "beta"

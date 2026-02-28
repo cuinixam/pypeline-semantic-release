@@ -200,6 +200,12 @@ class CreateReleaseCommitConfig(DataClassDictMixin):
 
     #: Whether or not to push the new commit and tag to the remote
     push: bool = True
+    #: Whether to execute build_command from pyproject.toml after version bump.
+    #: When True, semantic-release runs the configured build_command.
+    build: bool = False
+    #: Whether to create a VCS release (e.g. GitHub Release) and upload assets.
+    #: When True, semantic-release creates the release via the configured HVCS.
+    vcs_release: bool = False
 
 
 class CreateReleaseCommit(BaseStep):
@@ -320,12 +326,15 @@ class CreateReleaseCommit(BaseStep):
     def do_release(self, remote_config: RemoteConfig) -> None:
         config = CreateReleaseCommitConfig.from_dict(self.config) if self.config else CreateReleaseCommitConfig()
         self.quote_token_for_url(remote_config)
-        semantic_release_args = ["--skip-build", "--no-vcs-release"]
+        semantic_release_args: list[str] = []
+        if not config.build:
+            semantic_release_args.append("--skip-build")
+        if not config.vcs_release:
+            semantic_release_args.append("--no-vcs-release")
         semantic_release_args.append("--push" if config.push else "--no-push")
         prerelease_token = self.execution_context.get_input("prerelease_token")
         if prerelease_token:
             semantic_release_args.extend(["--prerelease-token", prerelease_token])
-        # For Windows call the semantic-release executable
         self.execute_process(
             [
                 *self.get_semantic_release_command(),

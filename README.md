@@ -7,9 +7,6 @@
   <a href="https://github.com/cuinixam/pypeline">
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/cuinixam/pypeline/main/assets/badge/v0.json" alt="pypeline">
   </a>
-  <a href="https://python-poetry.org/">
-    <img src="https://img.shields.io/badge/packaging-poetry-299bd7?style=flat-square&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAASCAYAAABrXO8xAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJJSURBVHgBfZLPa1NBEMe/s7tNXoxW1KJQKaUHkXhQvHgW6UHQQ09CBS/6V3hKc/AP8CqCrUcpmop3Cx48eDB4yEECjVQrlZb80CRN8t6OM/teagVxYZi38+Yz853dJbzoMV3MM8cJUcLMSUKIE8AzQ2PieZzFxEJOHMOgMQQ+dUgSAckNXhapU/NMhDSWLs1B24A8sO1xrN4NECkcAC9ASkiIJc6k5TRiUDPhnyMMdhKc+Zx19l6SgyeW76BEONY9exVQMzKExGKwwPsCzza7KGSSWRWEQhyEaDXp6ZHEr416ygbiKYOd7TEWvvcQIeusHYMJGhTwF9y7sGnSwaWyFAiyoxzqW0PM/RjghPxF2pWReAowTEXnDh0xgcLs8l2YQmOrj3N7ByiqEoH0cARs4u78WgAVkoEDIDoOi3AkcLOHU60RIg5wC4ZuTC7FaHKQm8Hq1fQuSOBvX/sodmNJSB5geaF5CPIkUeecdMxieoRO5jz9bheL6/tXjrwCyX/UYBUcjCaWHljx1xiX6z9xEjkYAzbGVnB8pvLmyXm9ep+W8CmsSHQQY77Zx1zboxAV0w7ybMhQmfqdmmw3nEp1I0Z+FGO6M8LZdoyZnuzzBdjISicKRnpxzI9fPb+0oYXsNdyi+d3h9bm9MWYHFtPeIZfLwzmFDKy1ai3p+PDls1Llz4yyFpferxjnyjJDSEy9CaCx5m2cJPerq6Xm34eTrZt3PqxYO1XOwDYZrFlH1fWnpU38Y9HRze3lj0vOujZcXKuuXm3jP+s3KbZVra7y2EAAAAAASUVORK5CYII=" alt="Poetry">
-  </a>
   <a href="https://github.com/astral-sh/ruff">
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="ruff">
   </a>
@@ -25,38 +22,40 @@
   <img src="https://img.shields.io/pypi/l/pypeline-semantic-release.svg?style=flat-square" alt="License">
 </p>
 
-So you are using [Pypeline](https://pypeline-runner.readthedocs.io) and you want to automate your python package release process, then you might want to consider the following steps:
+[Pypeline](https://pypeline-runner.readthedocs.io) steps that wrap [python-semantic-release](https://github.com/python-semantic-release/python-semantic-release) to automate versioning and publishing for Python projects.
 
-1. **`CheckCIContext` Step**:
+## Steps overview
 
-   - Checks if the current CI context (e.g. Jenkins, Github, etc.) and updates the information in the execution environment to be used by the other steps.
+| Step | Purpose |
+|---|---|
+| `CheckCIContext` | Detects the CI system (Jenkins, GitHub Actions) and whether the build is a PR |
+| `CreateReleaseCommit` | Computes the next version, creates a release commit and tag, optionally builds and creates a VCS release |
+| `PublishPackage` | Publishes the package to PyPI (or a private registry) via Poetry |
 
-2. **`CreateReleaseCommit` Step**:
+The steps communicate through a shared data registry: `CheckCIContext` produces a `CIContext`, `CreateReleaseCommit` produces a `ReleaseCommit`, and `PublishPackage` consumes both to decide whether to publish.
 
-   - Automates versioning and creates a new release commit and tag based on your commit messages.
-   - It is a wrapper for the [python-semantic-release](https://github.com/python-semantic-release/python-semantic-release) tool to be used as Pypeline step.
+## Installation
 
-3. **`PublishPackage` Step**:
-   - Uses **poetry** to publish your package to PyPI or another repository.
-   - Configures credentials dynamically from environment variables.
+Add the package as a dependency in your `pyproject.toml`:
 
-## How to use it
+```toml
+[tool.poetry.dependencies]
+pypeline-semantic-release = "^0"
+```
 
-You need to add this module as a dependency in your `pyproject.toml` and then use the steps in your `pypeline.yaml` configuration.
+## Quick start
+
+### Minimal `pypeline.yaml`
 
 ```yaml
 inputs:
   prerelease_token:
     type: string
-    description:
-      "The prerelease token can be used when multiple users want to create release candidates.
-      One can define an own unique token to avoid conflicts: rcN.dev, where N is a digit. For example: rc1.dev"
-    required: false
+    description: "Prerelease token (e.g. rc, rc1.dev)"
     default: "rc"
   do_prerelease:
     type: boolean
-    description: "If set to true, will create a prerelease. This is required to avoid creating prereleases automatically when pushing a branch."
-    required: false
+    description: "Set to true to create a prerelease"
     default: false
 
 pipeline:
@@ -64,129 +63,265 @@ pipeline:
     module: pypeline.steps.create_venv
 
   - step: CheckCIContext
-    module: pypeline-semantic-release.steps
+    module: pypeline_semantic_release.steps
+
+  # ... your lint, test, docs steps here ...
 
   - step: CreateReleaseCommit
-    module: pypeline-semantic-release.steps
+    module: pypeline_semantic_release.steps
 
   - step: PublishPackage
-    module: pypeline-semantic-release.steps
-    config:
-      pypi_repository_name: my-repo
-      pypi_user_env: PYPI_USER
-      pypi_password_env: PYPI_PASSWD
+    module: pypeline_semantic_release.steps
 ```
 
-### Create releases
+### Semantic release configuration
 
-The `CreateReleaseCommit` step will create a release commit based on the `semantic-release` configuration options in the `pyproject.toml` file.
+Version computation and branching rules are configured in `pyproject.toml` via the standard [python-semantic-release configuration](https://python-semantic-release.readthedocs.io/en/latest/configuration/). For example:
 
 ```toml
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+build_command = "uv build"
+
 [tool.semantic_release.branches.main]
 match = "main"
-prerelease = false
 
-[tool.semantic_release.branches.feature]
+[tool.semantic_release.branches.noop]
 match = "(?!main$)"
 prerelease = true
 ```
 
-When is a release created?
+## Step configuration
 
-- When a commit is pushed to the `main` branch, the step will create a release commit and tag if `semantic-release` detects a new version shall be created.
-- No release is created from a pull request
-- No release candidate is created automatically when pushing a branch. This is to avoid creating release candidates when a branch is pushed. See below how to create prereleases.
+### `CreateReleaseCommit`
 
-### Create prereleases
+Controls how `semantic-release version` is called.
 
-Prereleases are only created when the `do_prerelease` input is set to `true`.
-One needs to provide the `do_prerelease` input when running the `pypeline`.
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `push` | `bool` | `true` | Push the new commit and tag to the remote |
+| `build` | `bool` | `false` | Run the `build_command` from `pyproject.toml` (creates dist artifacts) |
+| `vcs_release` | `bool` | `false` | Create a VCS release (e.g. GitHub Release) and upload configured assets |
+
+```yaml
+- step: CreateReleaseCommit
+  module: pypeline_semantic_release.steps
+  config:
+    build: true
+    vcs_release: true
+```
 
 > [!NOTE]
-> To create a prerelease, one needs to push branch and manually trigger a build with the `do_prerelease` input set to `true`.
+> When `build` is `false` (default), `semantic-release version` is called with `--skip-build`.
+> When `vcs_release` is `false` (default), it is called with `--no-vcs-release`.
+> These defaults keep backward compatibility with existing Jenkins/Bitbucket setups.
 
-Depending on the CI system, one needs to define input parameters for the users to select when manually triggering the pipeline.
+### `PublishPackage`
 
-#### Github Actions
+Publishes the package to PyPI via `poetry publish --build`.
 
-For Github Actions one can define the inputs in the workflow file:
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `pypi_repository_name` | `str \| None` | `None` | Poetry repository name (if `None`, publishes to default PyPI) |
+| `pypi_user_env` | `str` | `"PYPI_USER"` | Environment variable for the PyPI username |
+| `pypi_password_env` | `str` | `"PYPI_PASSWD"` | Environment variable for the PyPI password |
+
+```yaml
+- step: PublishPackage
+  module: pypeline_semantic_release.steps
+  config:
+    pypi_repository_name: "my-private-repo"
+    pypi_user_env: "PYPI_USER"
+    pypi_password_env: "PYPI_PASSWD"
+```
+
+When no `pypi_repository_name` is set, the package is published to the default PyPI. This works with [trusted publishing](https://docs.pypi.org/trusted-publishers/) on GitHub Actions (no credentials needed).
+
+## Usage examples
+
+### GitHub Actions — open source project
+
+Build artifacts, create a GitHub Release, and publish to PyPI:
+
+```yaml
+# pypeline.yaml
+pipeline:
+  - step: CheckCIContext
+    module: pypeline_semantic_release.steps
+
+  - step: CreateReleaseCommit
+    module: pypeline_semantic_release.steps
+    config:
+      build: true          # runs build_command from pyproject.toml
+      vcs_release: true     # creates GitHub Release + uploads assets
+
+  - step: PublishPackage
+    module: pypeline_semantic_release.steps
+```
+
+The GitHub Actions workflow needs `GH_TOKEN` for the VCS release and `contents: write` permission:
+
+```yaml
+# .github/workflows/ci.yml (release job)
+release:
+  runs-on: ubuntu-latest
+  permissions:
+    contents: write
+    id-token: write    # for PyPI trusted publishing
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - run: pip install pypeline-runner>=1.27
+    - name: Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: pypeline run --step CheckCIContext --step CreateReleaseCommit --step PublishPackage --single
+```
+
+> [!TIP]
+> With `vcs_release: true`, you don't need the separate `python-semantic-release/publish-action` Docker action.
+> `semantic-release version` natively creates the GitHub Release and uploads assets.
+
+### Jenkins / Bitbucket — private registry
+
+No build in the release step (Poetry builds during publish), no VCS release:
+
+```yaml
+# pypeline.yaml
+pipeline:
+  - step: CheckCIContext
+    module: pypeline_semantic_release.steps
+
+  - step: CreateReleaseCommit
+    module: pypeline_semantic_release.steps
+    # defaults: build=false, vcs_release=false
+
+  - step: PublishPackage
+    module: pypeline_semantic_release.steps
+    config:
+      pypi_repository_name: "my-artifactory-repo"
+      pypi_user_env: "PYPI_USER"
+      pypi_password_env: "PYPI_PASSWD"
+```
+
+## Releases and prereleases
+
+### When is a release created?
+
+- A push to the release branch (e.g. `main`) triggers version computation. If `semantic-release` detects a version bump from conventional commits, a release commit and tag are created.
+- **No release** is created from pull requests.
+- **No prerelease** is created automatically when pushing a feature branch.
+
+### Creating prereleases
+
+Prereleases require the `do_prerelease` input to be explicitly set to `true`:
+
+```shell
+pypeline run --input do_prerelease
+```
+
+The `prerelease_token` input controls the prerelease suffix (default: `rc`). Multiple developers can use unique tokens to avoid conflicts:
+
+```shell
+pypeline run --input do_prerelease --input prerelease_token=rc1.dev
+```
+
+#### GitHub Actions `workflow_dispatch`
+
+A common pattern is to use `workflow_dispatch` for prereleases: any manual trigger creates a prerelease from a chosen branch, while pushes to the main branch create regular releases automatically.
 
 ```yaml
 name: CI
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
   pull_request:
-    branches: [develop]
 
   workflow_dispatch:
     inputs:
-      do_prerelease:
-        type: boolean
-        description: "If set to true, will create a prerelease.
-          This is required to avoid creating prereleases automatically when pushing a branch."
-        required: false
-        default: false
-
+      target_branch:
+        description: "The branch to release from"
+        required: true
+        default: "main"
       prerelease_token:
-        description:
-          "The prerelease token can be used when multiple users want to create release candidates.
-          One can define an own unique token to avoid conflicts: rcN.dev, where N is a digit. For example: rc1.dev"
-        required: false
+        type: string
+        description: "Prerelease token (e.g. rc, rc1.dev)"
         default: "rc"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.target_branch || github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install pypeline-runner>=1.27
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PYPELINE_ARGS="--step CheckCIContext --step CreateReleaseCommit --step PublishPackage --single"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger: create a prerelease from the target branch
+            pypeline run $PYPELINE_ARGS \
+              --input do_prerelease \
+              --input prerelease_token=${{ github.event.inputs.prerelease_token }}
+          else
+            # Push to main: create a regular release
+            pypeline run $PYPELINE_ARGS
+          fi
 ```
 
 > [!NOTE]
-> The way inputs are defined in Github Actions is similar to how they are defined in [Pypeline](https://pypeline-runner.readthedocs.io).
+> The `target_branch` input is handled by the `actions/checkout` step — it controls which branch git
+> checks out. The pypeline steps work on whatever branch is currently checked out.
+> The `do_prerelease` input is what tells `CreateReleaseCommit` to allow prerelease versions.
 
-#### Jenkins
-
-For Jenkins, one can define the inputs in the pipeline script:
+#### Jenkins parameters
 
 ```groovy
 properties([
-    parameters ([
-    booleanParam(
+    parameters([
+        booleanParam(
             name: 'do_prerelease',
             defaultValue: false,
-            description: '''If set to true, will create a prerelease.
-                This is required to avoid creating prereleases automatically when pushing a branch.''',
+            description: 'Create a prerelease'
         ),
-    string(
+        string(
             name: 'prerelease_token',
             defaultValue: '',
-            description: '''The prerelease token can be used when multiple users
-                want to create release candidates. One can define an own unique token
-                to avoid conflicts: rcN.dev, where N is a digit. For example: rc1.dev'''
+            description: 'Prerelease token (e.g. rc, rc1.dev)'
         ),
     ])
 ])
 ```
 
-## Contributing ✨
+## Contributing
 
-The project uses Poetry for dependencies management and packaging.
-Run the `bootstrap.ps1` script to install Python and create the virtual environment.
+The project uses [uv](https://docs.astral.sh/uv/) for dependency management. Run `bootstrap.ps1` to set up the environment:
 
 ```powershell
 .\bootstrap.ps1
 ```
 
-This will also generate a `poetry.lock` file, you should track this file in version control.
-
-To execute the test suite, call pytest inside Poetry's virtual environment via `poetry run`:
+Run the full pipeline (lint + tests):
 
 ```shell
-.venv/Scripts/poetry run pytest
+pypeline run
 ```
-
-Check out the Poetry documentation for more information on the available commands.
-
-For those using [VS Code](https://code.visualstudio.com/) there are tasks defined for the most common commands:
-
-- bootstrap
-- run tests
-- run all checks configured for pre-commit
-
-See the `.vscode/tasks.json` for more details.
