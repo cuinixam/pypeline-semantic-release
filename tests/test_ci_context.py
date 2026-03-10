@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from pypeline.domain.execution_context import ExecutionContext
 
-from pypeline_semantic_release.steps import CheckCIContext, CIContext, CIDetector, CISystem
+from pypeline_semantic_release.check_ci_context import CheckCIContext, CIContext, CIDetector, CISystem
 from tests.utils import assert_element_of_type
 
 
