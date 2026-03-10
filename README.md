@@ -40,6 +40,64 @@ So you are using [Pypeline](https://pypeline-runner.readthedocs.io) and you want
    - Uses **poetry** to publish your package to PyPI or another repository.
    - Configures credentials dynamically from environment variables.
 
+4. **`PublishToOrphanBranch` Step**:
+   - Publishes selected files or folders to an orphan branch (e.g. `gh-pages`, `gen-code`).
+   - Optionally creates a tag aligned with the semantic-release version tag.
+
+### PublishToOrphanBranch
+
+The `PublishToOrphanBranch` step copies configured files and folders to a separate orphan branch. It runs only when a new release is created (a `ReleaseCommit` exists in the execution context) and only on CI (not during pull requests or local runs).
+
+#### Configuration
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `branch` | `str` | *(required)* | Name of the orphan branch to publish to |
+| `paths` | `list[str]` | `[]` | Files or folders (relative to repo root) to include |
+| `create_tag` | `bool` | `true` | Whether to create a tag on the orphan branch commit |
+
+When `create_tag` is `true`, a tag named `<branch>-<tag>` is created, where `<tag>` is the semantic-release version tag (e.g. `v1.2.0`). When `false`, only the branch is pushed.
+
+#### Example: GitHub Pages (no tag)
+
+```yaml
+pipeline:
+  - step: CheckCIContext
+    module: pypeline-semantic-release.steps
+
+  - step: CreateReleaseCommit
+    module: pypeline-semantic-release.steps
+
+  - step: PublishToOrphanBranch
+    module: pypeline-semantic-release.steps
+    config:
+      branch: gh-pages
+      paths:
+        - build/html
+      create_tag: false
+```
+
+#### Example: Generated code (with tag)
+
+```yaml
+pipeline:
+  - step: CheckCIContext
+    module: pypeline-semantic-release.steps
+
+  - step: CreateReleaseCommit
+    module: pypeline-semantic-release.steps
+
+  - step: PublishToOrphanBranch
+    module: pypeline-semantic-release.steps
+    config:
+      branch: gen-code
+      paths:
+        - generated
+        - schema
+        - include/api.h
+      create_tag: true
+```
+
 ## How to use it
 
 You need to add this module as a dependency in your `pyproject.toml` and then use the steps in your `pypeline.yaml` configuration.

@@ -1,7 +1,7 @@
 import pytest
 from semantic_release.cli.config import BranchConfig
 
-from pypeline_semantic_release.steps import CreateReleaseCommit, CreateReleaseCommitConfig, ReleaseCommit
+from pypeline_semantic_release.create_release_commit import CreateReleaseCommit, CreateReleaseCommitConfig, ReleaseCommit
 from tests.conftest import PyPackageRepo
 from tests.utils import assert_element_of_type
 

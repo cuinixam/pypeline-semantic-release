@@ -5,7 +5,9 @@ import pytest
 from pypeline.domain.execution_context import ExecutionContext
 from semantic_release.version.version import Version
 
-from pypeline_semantic_release.steps import CIContext, CISystem, PublishPackage, PublishPackageConfig, ReleaseCommit
+from pypeline_semantic_release.check_ci_context import CIContext, CISystem
+from pypeline_semantic_release.create_release_commit import ReleaseCommit
+from pypeline_semantic_release.publish_package import PublishPackage, PublishPackageConfig
 
 
 @pytest.fixture

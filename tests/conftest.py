@@ -5,7 +5,7 @@ import pytest
 from git import Repo
 from pypeline.domain.execution_context import ExecutionContext
 
-from pypeline_semantic_release.steps import CIContext, CISystem
+from pypeline_semantic_release.check_ci_context import CIContext, CISystem
 
 
 class PyPackageRepo:
