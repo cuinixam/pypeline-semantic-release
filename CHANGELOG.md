@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (2026-04-07)
+
+### Features
+
+- Add publishtoorphanbranch step ([`9d65d14`](https://github.com/cuinixam/pypeline-semantic-release/commit/9d65d1403ab0ef43253d64040587bfed72a39270))
+
 ## v0.4.2 (2026-03-02)
 
 ### Bug fixes
