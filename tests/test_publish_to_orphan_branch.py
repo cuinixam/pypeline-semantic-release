@@ -1,7 +1,8 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from git import Repo
 from pypeline.domain.execution_context import ExecutionContext
 from semantic_release.version.version import Version
 
@@ -214,3 +215,107 @@ def test_empty_paths_config_skips(py_package_tmp: PyPackageRepo) -> None:
     _create_step(ctx, config).run()
 
     assert "generated-code" not in [b.name for b in py_package_tmp.repo.branches]
+
+
+def _seed_orphan_branch_on_origin(tmp_path: Path, branch: str) -> tuple[Path, str]:
+    """Create a bare origin repo with a pre-existing orphan branch. Return (bare_path, tip_sha)."""
+    bare_path = tmp_path / "origin.git"
+    Repo.init(bare_path, bare=True)
+
+    seeder_path = tmp_path / "seeder"
+    seeder_path.mkdir()
+    seeder = Repo.init(seeder_path, initial_branch=branch)
+    seeder.create_remote("origin", str(bare_path))
+    seed_file = seeder_path / "seed.txt"
+    seed_file.write_text("seed")
+    seeder.index.add(["seed.txt"])
+    seed_commit = seeder.index.commit("seed commit on orphan branch")
+    seeder.git.push("origin", branch)
+    return bare_path, seed_commit.hexsha
+
+
+def test_remote_branch_exists_uses_remote_tip_as_parent(py_package_tmp: PyPackageRepo, tmp_path: Path) -> None:
+    bare_path, remote_tip_sha = _seed_orphan_branch_on_origin(tmp_path, "generated-code")
+    repo = py_package_tmp.repo
+    repo.delete_remote("origin")
+    repo.create_remote("origin", str(bare_path))
+
+    _write_file(py_package_tmp, "output/result.c", "int main() {}")
+    ctx = _create_execution_context(py_package_tmp, "1.0.0-dev.1")
+    config = PublishToOrphanBranchConfig(branch="generated-code", paths=["output/result.c"])
+    step = _create_step(ctx, config)
+
+    with patch.object(step, "execute_process"):
+        step.run()
+
+    new_commit = repo.heads["generated-code"].commit
+    assert len(new_commit.parents) == 1
+    assert new_commit.parents[0].hexsha == remote_tip_sha
+    blob_paths = [blob.path for blob in new_commit.tree.traverse() if blob.type == "blob"]
+    assert "output/result.c" in blob_paths
+
+
+def test_remote_wins_when_local_and_remote_diverge(py_package_tmp: PyPackageRepo, tmp_path: Path) -> None:
+    """Local `generated-code` exists but is stale/diverged — remote tip must be used as parent, with a warning."""
+    bare_path, remote_tip_sha = _seed_orphan_branch_on_origin(tmp_path, "generated-code")
+    repo = py_package_tmp.repo
+    repo.delete_remote("origin")
+    repo.create_remote("origin", str(bare_path))
+
+    # Simulate a stale/divergent local `generated-code` by pointing it at an unrelated commit.
+    local_tip = repo.head.commit
+    repo.git.update_ref("refs/heads/generated-code", local_tip.hexsha)
+    assert local_tip.hexsha != remote_tip_sha
+
+    _write_file(py_package_tmp, "output/result.c", "int main() {}")
+    ctx = _create_execution_context(py_package_tmp, "1.0.0-dev.1")
+    config = PublishToOrphanBranchConfig(branch="generated-code", paths=["output/result.c"])
+    step = _create_step(ctx, config)
+
+    with patch("pypeline_semantic_release.publish_to_orphan_branch.logger") as mock_logger, patch.object(step, "execute_process"):
+        step.run()
+
+    new_commit = repo.heads["generated-code"].commit
+    assert [p.hexsha for p in new_commit.parents] == [remote_tip_sha]
+    warn_msgs = [str(call.args[0]) for call in mock_logger.warning.call_args_list]
+    assert any("diverges" in msg and "generated-code" in msg for msg in warn_msgs)
+
+
+def test_fetch_failure_falls_back_and_warns(py_package_tmp: PyPackageRepo) -> None:
+    """Unreachable remote must not silently produce a disconnected orphan commit without a warning."""
+    # The fixture's origin points at `git@github.com:user/repo.git` — unreachable in tests,
+    # so the fetch will raise GitCommandError. Seed a local branch directly to exercise fallback.
+    repo = py_package_tmp.repo
+    local_tip_sha = repo.head.commit.hexsha
+    repo.git.update_ref("refs/heads/generated-code", local_tip_sha)
+
+    _write_file(py_package_tmp, "output/result.c", "int main() {}")
+    ctx = _create_execution_context(py_package_tmp, "1.0.0-dev.1")
+    config = PublishToOrphanBranchConfig(branch="generated-code", paths=["output/result.c"])
+    step = _create_step(ctx, config)
+
+    with patch("pypeline_semantic_release.publish_to_orphan_branch.logger") as mock_logger, patch.object(step, "execute_process"):
+        step.run()
+
+    new_commit = repo.heads["generated-code"].commit
+    assert [p.hexsha for p in new_commit.parents] == [local_tip_sha]
+    warn_calls = [str(call.args[0]) for call in mock_logger.warning.call_args_list]
+    assert any("generated-code" in msg and "origin" in msg for msg in warn_calls)
+
+
+def test_push_command_invoked_with_expected_refs(py_package_tmp: PyPackageRepo) -> None:
+    """The push command must include the branch name and the tag (when create_tag is True)."""
+    _write_file(py_package_tmp, "output/result.c", "int main() {}")
+    ctx = _create_execution_context(py_package_tmp, "1.0.0-dev.1")
+    config = PublishToOrphanBranchConfig(branch="generated-code", paths=["output/result.c"])
+    step = _create_step(ctx, config)
+
+    mock_exec = MagicMock()
+    with patch.object(step, "execute_process", mock_exec):
+        step.run()
+
+    mock_exec.assert_called_once()
+    command = mock_exec.call_args.args[0]
+    assert command[:3] == ["git", "push", "origin"]
+    assert "generated-code" in command
+    assert "generated-code-v1.0.0-dev.1" in command

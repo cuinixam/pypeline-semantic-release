@@ -3,8 +3,10 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from git import Commit, Repo
+from git.exc import GitCommandError
 from mashumaro.mixins.dict import DataClassDictMixin
 from py_app_dev.core.exceptions import UserNotificationException
+from py_app_dev.core.logging import logger
 
 from pypeline_semantic_release.base import BaseStep, change_directory
 from pypeline_semantic_release.check_ci_context import CIContext
@@ -64,7 +66,8 @@ class PublishToOrphanBranch(BaseStep):
 
             self._validate_paths(repo_dir, config.paths)
             tree_sha = self._build_tree(repo, repo_dir, config.paths)
-            parent_commits = self._parent_commits(repo, config.branch)
+            remote_tip = self._fetch_remote_branch_tip(repo, config.branch)
+            parent_commits = self._resolve_parent_commits(repo, config.branch, remote_tip)
             message = f"release: {tag_name}" if tag_name else f"release: {config.branch}"
             commit = Commit.create_from_tree(repo, repo.tree(tree_sha), message, parent_commits)
             commit_sha = commit.hexsha
@@ -110,11 +113,53 @@ class PublishToOrphanBranch(BaseStep):
             tmp_index_path.unlink(missing_ok=True)
 
     @staticmethod
-    def _parent_commits(repo: Repo, branch_name: str) -> list[Commit]:
-        """Return parent commits if the branch already exists, empty list otherwise."""
+    def _resolve_parent_commits(repo: Repo, branch_name: str, remote_tip: Commit | None) -> list[Commit]:
+        """
+        Return parent commits for the next commit on the orphan branch.
+
+        Prefers ``remote_tip`` (the already-fetched ``origin/<branch>``) when
+        provided, so that a manually-created upstream branch is extended — not
+        overwritten by a disconnected orphan commit that a non-forced push
+        would reject. Falls back to the local branch tip, then to an empty
+        list (true orphan).
+
+        When both remote and local tips exist and diverge, the remote wins and
+        the caller's local branch ref will be overwritten by ``update_ref`` — a
+        warning is logged so this is visible rather than silent.
+        """
+        if remote_tip is not None:
+            if branch_name in [ref.name for ref in repo.branches]:
+                local_tip = repo.heads[branch_name].commit
+                if local_tip.hexsha != remote_tip.hexsha:
+                    logger.warning(
+                        f"Local '{branch_name}' ({local_tip.hexsha[:8]}) diverges from "
+                        f"origin/{branch_name} ({remote_tip.hexsha[:8]}). Remote tip wins; "
+                        f"local branch will be fast-forwarded to the new commit."
+                    )
+            return [remote_tip]
         if branch_name in [ref.name for ref in repo.branches]:
             return [repo.heads[branch_name].commit]
         return []
+
+    @staticmethod
+    def _fetch_remote_branch_tip(repo: Repo, branch_name: str) -> Commit | None:
+        if "origin" not in [remote.name for remote in repo.remotes]:
+            return None
+        try:
+            repo.git.fetch("origin", f"+refs/heads/{branch_name}:refs/remotes/origin/{branch_name}")
+        except GitCommandError as err:
+            # Distinguish "branch not on remote yet" (expected first-run) from
+            # "remote unreachable / auth failed" — operators need the hint.
+            logger.warning(f"Could not fetch '{branch_name}' from origin: {err}. Falling back to local branch tip.")
+            return None
+        try:
+            return repo.remotes.origin.refs[branch_name].commit
+        except IndexError:
+            # Fetch reported success but the tracking ref is missing — genuinely
+            # anomalous (corrupted refs, concurrent prune), not the "no remote
+            # branch yet" case (which raises GitCommandError above).
+            logger.warning(f"Fetched 'origin/{branch_name}' but tracking ref is missing. Falling back to local branch tip.")
+            return None
 
     def _find_data(self, data_type: type[T]) -> T | None:
         tmp_data = self.execution_context.data_registry.find_data(data_type)
