@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.1 (2026-04-21)
+
+### Bug fixes
+
+- Existing orphan branch is ignored ([`c6d2d3c`](https://github.com/cuinixam/pypeline-semantic-release/commit/c6d2d3c6e95141a0655540e49833cc84e2029368))
+
 ## v0.5.0 (2026-04-07)
 
 ### Features
